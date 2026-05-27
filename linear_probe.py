@@ -116,7 +116,7 @@ def main(args):
     if args.model in ("mae", "mae_sota"):
         encoder = base_model.encoder
     else:
-        encoder = base_model.context_encoder
+        encoder = base_model.target_encoder
 
     model = LinearProbeWrapper(encoder, num_classes=num_classes, embed_dim=192).to(DEVICE)
 
