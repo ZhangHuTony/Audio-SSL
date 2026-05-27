@@ -57,7 +57,7 @@ def run_epoch(model, loader, model_type, optimizer=None, momentum=None, augment=
                 if model_type in ("mae", "mae_sota"):
                     loss, _, _ = model(mels)
                     aux = None
-                elif model_type == "jepa":
+                elif model_type  in ("jepa","cjepa"):
                     loss, std_val = model(mels)
                     aux = std_val
                     has_aux = True
@@ -79,7 +79,7 @@ def run_epoch(model, loader, model_type, optimizer=None, momentum=None, augment=
 
             if optimizer is not None and step % 50 == 0:
                 msg = f"  step {step:4d}  loss {loss.item():.4f}"
-                if model_type == "jepa":
+                if model_type in ("cjepa", "jepa"):
                     msg += f"  std {(aux.item() if torch.is_tensor(aux) else aux):.4f}"
                 print(msg)
 
