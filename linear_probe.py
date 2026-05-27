@@ -11,6 +11,7 @@ from torch.utils.data import DataLoader, ConcatDataset, Subset
 from dataset import CachedMelDataset
 from mae import AudioMAE
 from jepa import AudioJEPA
+from cjepa import AudioCJEPA
 
 DEVICE = torch.device("cuda:0" if torch.cuda.is_available() else "cpu")
 
@@ -99,6 +100,8 @@ def main(args):
         base_model = AudioMAE(use_sota_backbone=True)
     elif args.model == "jepa":
         base_model = AudioJEPA()
+    elif args.model == "cjepa":
+        base_model = AudioCJEPA()
     else:
         raise ValueError("Unsupported model for probing")
 

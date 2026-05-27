@@ -7,6 +7,7 @@ import torch.optim as optim
 from torch.utils.data import DataLoader, ConcatDataset, Subset
 import torchaudio.transforms as T
 import matplotlib.pyplot as plt
+from cjepa import AudioCJEPA
 
 from dataset import CachedMelDataset
 from mae import AudioMAE
@@ -162,6 +163,8 @@ def main(args):
         model = AudioMAE(use_sota_backbone=True)
     elif args.model == "jepa":
         model = AudioJEPA()
+    elif args.model == "cjepa":
+        model = AudioCJEPA()
     else:
         raise ValueError("Unsupported model.")
 
