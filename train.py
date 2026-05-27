@@ -253,7 +253,7 @@ def main(args):
 
 if __name__ == "__main__":
     p = argparse.ArgumentParser()
-    p.add_argument("--model", type=str, default="mae", choices=["mae", "mae_sota", "jepa"])
+    p.add_argument("--model", type=str, default="mae", choices=["mae", "mae_sota", "jepa", "cjepa"])
     p.add_argument("--data_dir", type=str, default="./data")
     p.add_argument("--batch_size", type=int, default=2048)
     p.add_argument("--num_workers", type=int, default=32)
