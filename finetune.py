@@ -11,6 +11,7 @@ import matplotlib.pyplot as plt
 from dataset import CachedMelDataset
 from mae import AudioMAE
 from jepa import AudioJEPA
+from cjepa import AudioCJEPA
 
 DEVICE = torch.device("cuda:0" if torch.cuda.is_available() else "cpu")
 
@@ -58,6 +59,16 @@ def build_loader(dataset, args, shuffle):
     )
 
 
+def infer_num_classes(train_dataset):
+    # Labels are integers stored INSIDE each .pt file by precompute_mels.py,
+    # not encoded in the filename. Scan the dataset to find the class count.
+    seen = set()
+    loader = DataLoader(train_dataset, batch_size=1024, num_workers=4)
+    for _, labels in loader:
+        seen.update(labels.tolist())
+    return max(seen) + 1
+
+
 def main(args):
     print(f"Starting End-to-End Fine-Tuning for {args.model.upper()} | Device: {DEVICE}")
     os.makedirs(f"logs/{args.model}", exist_ok=True)
@@ -67,10 +78,7 @@ def main(args):
     train_loader = build_loader(train_dataset, args, shuffle=True)
     val_loader = build_loader(val_dataset, args, shuffle=False)
 
-    # Infer num_classes from the cached mel filenames (format: "<label>_<idx>.pt")
-    sample_paths = train_dataset.dataset.paths
-    labels = sorted({os.path.basename(p).rsplit("_", 1)[0] for p in sample_paths})
-    num_classes = len(labels)
+    num_classes = infer_num_classes(train_dataset)
     print(f"Detected {num_classes} classes")
 
     if args.model == "mae":
@@ -79,6 +87,8 @@ def main(args):
         base_model = AudioMAE(use_sota_backbone=True)
     elif args.model == "jepa":
         base_model = AudioJEPA()
+    elif args.model == "cjepa":
+        base_model = AudioCJEPA()
     else:
         raise ValueError("Unsupported model for fine-tuning")
 
@@ -95,7 +105,7 @@ def main(args):
 
     if args.model in ("mae", "mae_sota"):
         encoder = base_model.encoder
-    else:
+    else:  # jepa, cjepa
         encoder = base_model.context_encoder
 
     model = FineTuneWrapper(encoder, num_classes=num_classes, embed_dim=192).to(DEVICE)
@@ -198,7 +208,7 @@ def main(args):
 
 if __name__ == "__main__":
     p = argparse.ArgumentParser()
-    p.add_argument("--model", type=str, default="mae", choices=["mae", "mae_sota", "jepa"])
+    p.add_argument("--model", type=str, default="mae", choices=["mae", "mae_sota", "jepa", "cjepa"])
     p.add_argument("--data_dir", type=str, default="./data")
     p.add_argument("--batch_size", type=int, default=256)
     p.add_argument("--num_workers", type=int, default=8)
