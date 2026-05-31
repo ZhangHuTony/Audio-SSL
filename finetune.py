@@ -70,9 +70,10 @@ def infer_num_classes(train_dataset):
 
 
 def main(args):
-    print(f"Starting End-to-End Fine-Tuning for {args.model.upper()} | Device: {DEVICE}")
-    os.makedirs(f"logs/{args.model}", exist_ok=True)
-    os.makedirs(f"checkpoints/{args.model}", exist_ok=True)
+    run_name = f"{args.model}_random" if args.random_init else args.model
+    print(f"Starting End-to-End Fine-Tuning for {run_name.upper()} | Device: {DEVICE}")
+    os.makedirs(f"logs/{run_name}", exist_ok=True)
+    os.makedirs(f"checkpoints/{run_name}", exist_ok=True)
 
     train_dataset, val_dataset = build_finetune_datasets(args)
     train_loader = build_loader(train_dataset, args, shuffle=True)
@@ -81,6 +82,7 @@ def main(args):
     num_classes = infer_num_classes(train_dataset)
     print(f"Detected {num_classes} classes")
 
+    torch.manual_seed(args.seed)
     if args.model == "mae":
         base_model = AudioMAE(use_sota_backbone=False)
     elif args.model == "mae_sota":
@@ -92,16 +94,18 @@ def main(args):
     else:
         raise ValueError("Unsupported model for fine-tuning")
 
-    ckpt_path = f"checkpoints/{args.model}/best.pt"
-    if not os.path.isfile(ckpt_path):
-        ckpt_path = f"checkpoints/{args.model}/last.pt"
-    if not os.path.isfile(ckpt_path):
-        raise FileNotFoundError(f"No checkpoint found under checkpoints/{args.model}/")
-
-    ckpt = torch.load(ckpt_path, map_location="cpu")["model"]
-    ckpt = {k.replace("_orig_mod.", ""): v for k, v in ckpt.items()}
-    base_model.load_state_dict(ckpt, strict=False)
-    print(f"Loaded checkpoint: {ckpt_path}")
+    if args.random_init:
+        print(f"RANDOM-INIT baseline (seed={args.seed}) — no SSL checkpoint loaded.")
+    else:
+        ckpt_path = f"checkpoints/{args.model}/best.pt"
+        if not os.path.isfile(ckpt_path):
+            ckpt_path = f"checkpoints/{args.model}/last.pt"
+        if not os.path.isfile(ckpt_path):
+            raise FileNotFoundError(f"No checkpoint found under checkpoints/{args.model}/")
+        ckpt = torch.load(ckpt_path, map_location="cpu")["model"]
+        ckpt = {k.replace("_orig_mod.", ""): v for k, v in ckpt.items()}
+        base_model.load_state_dict(ckpt, strict=False)
+        print(f"Loaded checkpoint: {ckpt_path}")
 
     if args.model in ("mae", "mae_sota"):
         encoder = base_model.encoder
@@ -111,11 +115,15 @@ def main(args):
     model = FineTuneWrapper(encoder, num_classes=num_classes, embed_dim=192).to(DEVICE)
     criterion = nn.CrossEntropyLoss()
 
-    optimizer = optim.AdamW([
-        {"params": model.encoder.parameters(), "lr": args.lr * 0.1},
-        {"params": model.bn.parameters(), "lr": args.lr},
-        {"params": model.head.parameters(), "lr": args.lr},
-    ], weight_decay=args.weight_decay)
+    if args.random_init:
+        # All params at the same LR — nothing pretrained to protect
+        optimizer = optim.AdamW(model.parameters(), lr=args.lr, weight_decay=args.weight_decay)
+    else:
+        optimizer = optim.AdamW([
+            {"params": model.encoder.parameters(), "lr": args.lr * 0.1},
+            {"params": model.bn.parameters(),      "lr": args.lr},
+            {"params": model.head.parameters(),    "lr": args.lr},
+        ], weight_decay=args.weight_decay)
 
     scheduler = optim.lr_scheduler.CosineAnnealingLR(optimizer, T_max=args.epochs, eta_min=1e-6)
 
@@ -168,7 +176,7 @@ def main(args):
 
         if v_acc > best_acc:
             best_acc = v_acc
-            torch.save(model.state_dict(), f"checkpoints/{args.model}/finetune_best.pt")
+            torch.save(model.state_dict(), f"checkpoints/{run_name}/finetune_best.pt")
             print(f"  ** Best saved ({best_acc:.2f}%)")
 
     print(f"\nFine-Tuning Finished. Best Val Accuracy: {best_acc:.2f}%")
@@ -190,9 +198,9 @@ def main(args):
     axes[2].set_xlabel("Epoch")
 
     plt.tight_layout()
-    plt.savefig(f"logs/{args.model}/finetune_plots.png", dpi=150)
+    plt.savefig(f"logs/{run_name}/finetune_plots.png", dpi=150)
     plt.close()
-    print(f"Saved plots to logs/{args.model}/finetune_plots.png")
+    print(f"Saved plots to logs/{run_name}/finetune_plots.png")
 
     results_dict = {
         "config": vars(args),
@@ -200,7 +208,7 @@ def main(args):
         "history": history,
     }
 
-    json_path = f"logs/{args.model}/finetune_results.json"
+    json_path = f"logs/{run_name}/finetune_results.json"
     with open(json_path, "w") as f:
         json.dump(results_dict, f, indent=4)
     print(f"Saved training results to {json_path}")
@@ -215,4 +223,7 @@ if __name__ == "__main__":
     p.add_argument("--epochs", type=int, default=60)
     p.add_argument("--lr", type=float, default=1e-3)
     p.add_argument("--weight_decay", type=float, default=1e-4)
+    p.add_argument("--random_init", action="store_true",
+                   help="Skip checkpoint load; train from random init (supervised baseline).")
+    p.add_argument("--seed", type=int, default=0)
     main(p.parse_args())
